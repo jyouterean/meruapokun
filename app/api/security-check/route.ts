@@ -22,7 +22,8 @@ export async function GET(req: NextRequest) {
       envValidation: envCheck.success,
       headers: {
         csp: "enabled",
-        hsts: process.env.NODE_ENV === "production" ? "enabled" : "disabled",
+        // このエンドポイントは本番環境では 403 を返すため、ここでは常に "disabled"
+        hsts: "disabled",
         xssProtection: "enabled",
       },
     },
