@@ -118,14 +118,16 @@ export async function POST(req: NextRequest) {
 
         results.created++
       } catch (error) {
+        const rawEmail = item.email || item.Email || item.EMAIL || "unknown"
+
         if (error instanceof z.ZodError) {
-          results.errors.push(`Validation error for email: ${email || "unknown"}`)
+          results.errors.push(`Validation error for email: ${rawEmail}`)
         } else {
           secureLogger.error("Lead upload processing error", error, {
             userId: session!.user.id,
             ip: getClientIP(req),
           })
-          results.errors.push(`Processing error`)
+          results.errors.push(`Processing error for email: ${rawEmail}`)
         }
         results.skipped++
       }
