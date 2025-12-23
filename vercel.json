@@ -1,4 +1,4 @@
 {
-  "//": "Vercel Cronは使用しません。送信ジョブはGitHub Actions (.github/workflows/send-worker.yml) から /api/worker/send-pending を叩いて実行します。"
+  "version": 2
 }
 
