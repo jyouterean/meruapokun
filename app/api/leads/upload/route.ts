@@ -1,31 +1,55 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { requireAuth, getClientIP, getUserAgent } from "@/lib/security/middleware"
+import { checkRateLimit, API_RATE_LIMITS } from "@/lib/security/rate-limit"
+import { sanitizeEmail, sanitizeURL, sanitizeText } from "@/lib/security/sanitize"
+import { csvRowSchema, validateID } from "@/lib/security/validation"
+import { secureLogger } from "@/lib/security/logger"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 
-const leadSchema = z.object({
-  email: z.string().email(),
-  companyName: z.string().optional(),
-  contactName: z.string().optional(),
-  position: z.string().optional(),
-  industry: z.string().optional(),
-  websiteUrl: z.string().url().optional().or(z.literal("")),
-  memo: z.string().optional(),
-  tags: z.string().optional(),
-})
-
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // 認証チェック
+  const { error: authError, session } = await requireAuth(req)
+  if (authError) return authError
+
+  // レート制限チェック
+  const rateLimit = checkRateLimit(req, {
+    ...API_RATE_LIMITS.upload,
+    keyGenerator: (r) => `upload:${session!.user.id}`,
+  })
+
+  if (!rateLimit.allowed) {
+    secureLogger.warn("Rate limit exceeded", {
+      userId: session!.user.id,
+      ip: getClientIP(req),
+      action: "LEAD_UPLOAD",
+    })
+    return NextResponse.json(
+      { error: "Rate limit exceeded", code: "RATE_LIMIT_EXCEEDED" },
+      {
+        status: 429,
+        headers: {
+          "X-RateLimit-Limit": String(API_RATE_LIMITS.upload.maxRequests),
+          "X-RateLimit-Remaining": String(rateLimit.remaining),
+          "X-RateLimit-Reset": String(rateLimit.resetAt),
+        },
+      }
+    )
   }
 
   try {
     const { data } = await req.json()
     
     if (!Array.isArray(data)) {
-      return NextResponse.json({ error: "Invalid data format" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid data format", code: "INVALID_FORMAT" }, { status: 400 })
+    }
+
+    // データ量制限（一度に1000件まで）
+    if (data.length > 1000) {
+      return NextResponse.json(
+        { error: "Too many records. Maximum 1000 records per request.", code: "TOO_MANY_RECORDS" },
+        { status: 400 }
+      )
     }
 
     const results = {
@@ -36,15 +60,36 @@ export async function POST(req: NextRequest) {
 
     for (const item of data) {
       try {
-        const validated = leadSchema.parse({
-          email: item.email || item.Email || item.EMAIL,
-          companyName: item.companyName || item.company_name || item["会社名"],
-          contactName: item.contactName || item.contact_name || item["担当者名"],
-          position: item.position || item["役職"],
-          industry: item.industry || item["業種"],
-          websiteUrl: item.websiteUrl || item.website_url || item["サイトURL"],
-          memo: item.memo || item["メモ"],
-          tags: item.tags ? item.tags.split(",").map((t: string) => t.trim()) : [],
+        // サニタイゼーション
+        const email = sanitizeEmail(item.email || item.Email || item.EMAIL || "")
+        if (!email) {
+          results.errors.push(`Invalid email: ${item.email || "unknown"}`)
+          results.skipped++
+          continue
+        }
+
+        const websiteUrl = item.websiteUrl || item.website_url || item["サイトURL"]
+        const sanitizedUrl = websiteUrl ? sanitizeURL(websiteUrl) : undefined
+
+        const validated = csvRowSchema.parse({
+          email,
+          companyName: item.companyName || item.company_name || item["会社名"]
+            ? sanitizeText(item.companyName || item.company_name || item["会社名"])
+            : undefined,
+          contactName: item.contactName || item.contact_name || item["担当者名"]
+            ? sanitizeText(item.contactName || item.contact_name || item["担当者名"])
+            : undefined,
+          position: item.position || item["役職"]
+            ? sanitizeText(item.position || item["役職"])
+            : undefined,
+          industry: item.industry || item["業種"]
+            ? sanitizeText(item.industry || item["業種"])
+            : undefined,
+          websiteUrl: sanitizedUrl || undefined,
+          memo: item.memo || item["メモ"]
+            ? sanitizeText(item.memo || item["メモ"])
+            : undefined,
+          tags: item.tags ? item.tags.split(",").map((t: string) => sanitizeText(t.trim())).filter(Boolean) : [],
         })
 
         await prisma.lead.upsert({
@@ -74,18 +119,33 @@ export async function POST(req: NextRequest) {
         results.created++
       } catch (error) {
         if (error instanceof z.ZodError) {
-          results.errors.push(`Invalid data: ${JSON.stringify(item)}`)
+          results.errors.push(`Validation error for email: ${email || "unknown"}`)
         } else {
-          results.errors.push(`Error processing: ${JSON.stringify(item)}`)
+          secureLogger.error("Lead upload processing error", error, {
+            userId: session!.user.id,
+            ip: getClientIP(req),
+          })
+          results.errors.push(`Processing error`)
         }
         results.skipped++
       }
     }
 
+    secureLogger.info("Lead upload completed", {
+      userId: session!.user.id,
+      ip: getClientIP(req),
+      created: results.created,
+      skipped: results.skipped,
+    })
+
     return NextResponse.json(results)
   } catch (error) {
-    console.error("Upload error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    secureLogger.error("Lead upload error", error, {
+      userId: session!.user.id,
+      ip: getClientIP(req),
+      userAgent: getUserAgent(req),
+    })
+    return NextResponse.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, { status: 500 })
   }
 }
 

@@ -1,0 +1,33 @@
+name: Send pending emails worker
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  send-pending-emails:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call worker API
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL or CRON_SECRET is not set"
+            exit 1
+          fi
+          RESPONSE=$(curl -sS -w ":%{http_code}" -X POST "$APP_URL/api/worker/send-pending" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json")
+          BODY="${RESPONSE%:*}"
+          STATUS="${RESPONSE##*:}"
+          echo "Status: $STATUS"
+          echo "Body: $BODY"
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "Worker API returned non-2xx status"
+            exit 1
+          fi
+
+

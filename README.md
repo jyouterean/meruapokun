@@ -88,39 +88,19 @@ npm run db:migrate
 npm run dev
 ```
 
-### 5. 送信ジョブの設定
+### 5. 送信ジョブの設定（GitHub Actions + ワーカーAPI）
 
-#### Vercel Cronを使用する場合
+本番環境では、Vercel Cron ではなく **GitHub Actions の schedule** で以下のワーカーAPIを5分おきに叩きます。
 
-`vercel.json`を作成：
+- ワーカーAPI: `POST /api/worker/send-pending`
+- 認証: `Authorization: Bearer $CRON_SECRET`
 
-```json
-{
-  "crons": [
-    {
-      "path": "/api/jobs/send",
-      "schedule": "*/5 * * * *"
-    }
-  ]
-}
-```
+GitHub Actions ワークフローは `.github/workflows/send-worker.yml` に定義されています。
 
-#### node-cronを使用する場合（開発環境）
+必要なSecrets:
 
-`scripts/cron.ts`を作成して実行：
-
-```typescript
-import cron from "node-cron"
-
-cron.schedule("*/5 * * * *", async () => {
-  await fetch(`${process.env.APP_BASE_URL}/api/jobs/send`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.CRON_SECRET}`,
-    },
-  })
-})
-```
+- `APP_URL`: `https://your-domain.com`
+- `CRON_SECRET`: 長いランダム文字列
 
 ## 使用方法
 
@@ -153,6 +133,61 @@ cron.schedule("*/5 * * * *", async () => {
 - **監査ログ**: 全ての操作を記録（プロンプト含む）
 - **送信フッター**: 会社情報、送信理由、配信停止リンクを自動付与
 - **NGワードフィルタ**: 誇大表現を自動フィルタ
+
+## ワーカー & キューの使い方
+
+### 追加の環境変数
+
+```env
+# ワーカーAPI保護用
+CRON_SECRET="your-long-random-string"
+
+# 本番URL
+APP_URL="https://your-domain.com"
+
+# SMTP送信用
+SMTP_HOST="smtp.example.com"
+SMTP_PORT="587"
+SMTP_USER="user"
+SMTP_PASSWORD="password"
+SMTP_FROM="noreply@example.com"
+
+# ワーカー設定（任意）
+WORKER_BATCH_SIZE="50"
+WORKER_LOCK_TTL_SECONDS="540"
+WORKER_MAX_ATTEMPTS="5"
+WORKER_RETRY_BACKOFF_MINUTES="5,15,60,360"
+```
+
+### キュー投入API例
+
+```bash
+curl -X POST "$APP_URL/api/email/enqueue" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "test@example.com",
+    "subject": "テスト送信",
+    "text": "これはテストメールです",
+    "idempotencyKey": "test-123"
+  }'
+```
+
+同じ `idempotencyKey` で複数回叩いても、1通分しかキューに登録されません。
+
+### ワーカー手動実行例
+
+```bash
+curl -X POST "$APP_URL/api/worker/send-pending" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+レスポンスには、処理件数・成功/失敗・エラー内容が含まれます。
+
+### 管理画面
+
+- `/admin/email-queue` で最新100件のキュー状態を確認可能
+- ステータスフィルタ（QUEUED/SENDING/SENT/FAILED）
+- 「今すぐワーカー実行」ボタンで `/api/worker/send-pending` をサーバー側から起動
 
 ## ローカル開発環境
 

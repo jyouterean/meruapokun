@@ -175,10 +175,35 @@ enum Direction {
 
 enum EmailStatus {
   QUEUED
+  SENDING
   SENT
   DELIVERED
   FAILED
   BOUNCED
+}
+
+model EmailQueue {
+  id              String      @id @default(cuid())
+  to              String
+  subject         String
+  text            String?
+  html            String?
+  status          EmailStatus @default(QUEUED)
+  idempotencyKey  String      @unique
+  attempts        Int         @default(0)
+  maxAttempts     Int         @default(5)
+  nextAttemptAt   DateTime    @default(now())
+  lockedAt        DateTime?
+  lockOwner       String?
+  lastError       String?     @db.Text
+  sentAt          DateTime?
+  providerMessageId String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([lockedAt])
+  @@index([createdAt])
 }
 
 model SendQueue {

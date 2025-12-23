@@ -49,8 +49,20 @@ async function checkRateLimit(campaignId: string): Promise<boolean> {
 export async function POST(req: NextRequest) {
   // 認証: APIキーまたは内部呼び出しのみ
   const authHeader = req.headers.get("authorization")
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET || "secret"}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const expectedSecret = process.env.CRON_SECRET
+  
+  if (!expectedSecret || expectedSecret.length < 32) {
+    return NextResponse.json(
+      { error: "CRON_SECRET not properly configured", code: "CONFIG_ERROR" },
+      { status: 500 }
+    )
+  }
+  
+  if (authHeader !== `Bearer ${expectedSecret}`) {
+    return NextResponse.json(
+      { error: "Unauthorized", code: "AUTH_REQUIRED" },
+      { status: 401 }
+    )
   }
 
   try {
