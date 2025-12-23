@@ -22,7 +22,7 @@ function getBackoffMinutes(): number[] {
   return parts.length > 0 ? parts : DEFAULT_BACKOFF_MINUTES
 }
 
-export async function handler(req: NextRequest) {
+async function handleWorker(req: NextRequest) {
   const start = Date.now()
   const requestId = crypto.randomUUID()
 
@@ -167,7 +167,12 @@ export async function handler(req: NextRequest) {
   }
 }
 
-export const GET = handler
-export const POST = handler
+export async function GET(req: NextRequest) {
+  return handleWorker(req)
+}
+
+export async function POST(req: NextRequest) {
+  return handleWorker(req)
+}
 
 
