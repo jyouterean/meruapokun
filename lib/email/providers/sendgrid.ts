@@ -29,7 +29,7 @@ export class SendGridProvider implements EmailProvider {
       headers: params.headers || {},
     }
 
-    const [response] = await sgMail.send(msg)
+    const [response] = await sgMail.send(msg as any)
     
     // SendGridのレスポンスからmessageIdを取得
     const messageId = response.headers?.["x-message-id"]?.[0] || 
