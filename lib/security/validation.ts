@@ -20,7 +20,8 @@ export const csvRowSchema = z.object({
   industry: z.string().max(100).optional(),
   websiteUrl: z.string().url().max(2048).optional().or(z.literal("")),
   memo: z.string().max(5000).optional(),
-  tags: z.string().max(500).optional(),
+  // カンマ区切りを事前にsplitした後の配列を受ける
+  tags: z.array(z.string().max(50)).optional(),
 })
 
 /**
