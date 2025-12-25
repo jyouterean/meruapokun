@@ -6,8 +6,13 @@ import { checkEnvOnStartup } from "@/lib/security/env";
 
 const inter = Inter({ subsets: ["latin"] });
 
-// 起動時の環境変数チェック
-if (typeof window === "undefined") {
+// 起動時の環境変数チェック（ビルド時はスキップ）
+// Vercelのビルド時は環境変数検証をスキップ
+if (
+  typeof window === "undefined" &&
+  process.env.NEXT_PHASE !== "phase-production-build" &&
+  process.env.VERCEL !== undefined // Vercel環境で、かつビルド完了後のみ検証
+) {
   checkEnvOnStartup();
 }
 
