@@ -2,6 +2,7 @@ import { NextAuthOptions } from "next-auth"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import EmailProvider from "next-auth/providers/email"
 import { prisma } from "./prisma"
+import type SMTPTransport from "nodemailer/lib/smtp-transport"
 
 // SMTP設定の検証
 function getSMTPServer() {
@@ -40,15 +41,10 @@ export const authOptions: NextAuthOptions = {
           )
         }
 
-        // デフォルトの送信処理を使用
-        const { host, port, auth } = provider.server
+        // provider.serverをそのままnodemailerに渡す
         const nodemailer = require("nodemailer")
-        const transporter = nodemailer.createTransport({
-          host,
-          port,
-          secure: port === 465,
-          auth,
-        })
+        const server = provider.server as SMTPTransport.Options
+        const transporter = nodemailer.createTransport(server)
 
         await transporter.sendMail({
           to: identifier,
