@@ -1,15 +1,12 @@
 "use client"
 
-import { signIn } from "next-auth/react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -18,23 +15,38 @@ export default function LoginPage() {
     setSuccess(false)
     
     try {
-      const result = await signIn("email", {
-        email,
-        redirect: false,
+      const res = await fetch("/api/auth/magic-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       })
-      
-      if (result?.ok) {
-        setSuccess(true)
-        setEmail("") // 成功したら入力欄をクリア
-      } else {
-        const errorMessage = result?.error || "ログインに失敗しました"
-        console.error("Login error:", result)
-        setError(`ログインに失敗しました: ${errorMessage}\n\nSMTP設定（SMTP_HOST, SMTP_USER, SMTP_PASSWORD）を確認してください。`)
+
+      const raw = await res.text()
+      let data: any = null
+      try {
+        data = raw ? JSON.parse(raw) : null
+      } catch {
+        data = null
       }
+
+      if (!res.ok) {
+        const message =
+          data?.error ||
+          data?.detail ||
+          data?.message ||
+          raw ||
+          `Request failed: ${res.status}`
+        setError(`ログインに失敗しました: ${message}\n\nSMTP設定（SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM）を確認してください。`)
+        return
+      }
+
+      // 成功時
+      setSuccess(true)
+      setEmail("") // 成功したら入力欄をクリア
     } catch (error: any) {
       console.error("Login error:", error)
       const errorMessage = error?.message || "エラーが発生しました"
-      setError(`エラーが発生しました: ${errorMessage}\n\nSMTP設定（SMTP_HOST, SMTP_USER, SMTP_PASSWORD）を確認してください。`)
+      setError(`エラーが発生しました: ${errorMessage}\n\nSMTP設定（SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM）を確認してください。`)
     } finally {
       setIsLoading(false)
     }
