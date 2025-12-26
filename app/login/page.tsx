@@ -30,13 +30,23 @@ export default function LoginPage() {
       }
 
       if (!res.ok) {
-        const message =
-          data?.error ||
-          data?.detail ||
-          data?.message ||
-          raw ||
-          `Request failed: ${res.status}`
-        setError(`ログインに失敗しました: ${message}\n\nSMTP設定（SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM）を確認してください。`)
+        // エラーメッセージを構築（detailを優先、なければerror、なければraw）
+        let message = data?.detail || data?.error || data?.message || raw || `Request failed: ${res.status}`
+        
+        // SMTP設定情報があれば追加
+        if (data?.smtpConfig) {
+          message += `\n\n現在のSMTP設定:\n`
+          message += `- SMTP_HOST: ${data.smtpConfig.host}\n`
+          message += `- SMTP_PORT: ${data.smtpConfig.port}\n`
+          message += `- SMTP_USER: ${data.smtpConfig.user}\n`
+          message += `- SMTP_FROM: ${data.smtpConfig.from}`
+        } else if (data?.missing) {
+          message += `\n\n不足している環境変数: ${data.missing.join(", ")}`
+        } else {
+          message += `\n\nSMTP設定（SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM）を確認してください。`
+        }
+        
+        setError(`ログインに失敗しました:\n\n${message}`)
         return
       }
 

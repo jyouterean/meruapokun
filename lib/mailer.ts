@@ -19,7 +19,11 @@ export async function sendMail(params: SendMailParams): Promise<SendMailResult> 
   const from = process.env.SMTP_FROM || process.env.SENDGRID_FROM_EMAIL || "noreply@localhost"
 
   if (!host || !user || !pass) {
-    throw new Error("SMTP configuration is missing (SMTP_HOST/SMTP_USER/SMTP_PASSWORD)")
+    const missing = []
+    if (!host) missing.push("SMTP_HOST")
+    if (!user) missing.push("SMTP_USER")
+    if (!pass) missing.push("SMTP_PASSWORD")
+    throw new Error(`SMTP configuration is missing: ${missing.join(", ")}`)
   }
 
   const transporter = nodemailer.createTransport({
@@ -30,18 +34,42 @@ export async function sendMail(params: SendMailParams): Promise<SendMailResult> 
       user,
       pass,
     },
+    // 接続タイムアウト設定
+    connectionTimeout: 10000, // 10秒
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   })
 
-  const info = await transporter.sendMail({
-    from,
-    to: params.to,
-    subject: params.subject,
-    text: params.text,
-    html: params.html,
-  })
+  try {
+    // 接続をテスト
+    await transporter.verify()
+  } catch (verifyError: any) {
+    const errorMsg = verifyError?.message || String(verifyError)
+    if (errorMsg.includes("Invalid login") || errorMsg.includes("authentication")) {
+      throw new Error(`SMTP認証に失敗しました: ${errorMsg}\nSMTP_USERとSMTP_PASSWORDを確認してください。`)
+    } else if (errorMsg.includes("ECONNREFUSED") || errorMsg.includes("ENOTFOUND")) {
+      throw new Error(`SMTPサーバーに接続できませんでした: ${errorMsg}\nSMTP_HOST (${host}) と SMTP_PORT (${port}) を確認してください。`)
+    } else if (errorMsg.includes("timeout")) {
+      throw new Error(`SMTP接続がタイムアウトしました: ${errorMsg}\nネットワーク接続とSMTP設定を確認してください。`)
+    }
+    throw new Error(`SMTP接続エラー: ${errorMsg}`)
+  }
 
-  return {
-    messageId: info.messageId,
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to: params.to,
+      subject: params.subject,
+      text: params.text,
+      html: params.html,
+    })
+
+    return {
+      messageId: info.messageId,
+    }
+  } catch (sendError: any) {
+    const errorMsg = sendError?.message || String(sendError)
+    throw new Error(`メール送信に失敗しました: ${errorMsg}`)
   }
 }
 

@@ -99,10 +99,36 @@ export async function POST(req: NextRequest) {
     } catch (smtpError: any) {
       // SMTP送信エラー
       console.error("SMTP send error:", smtpError)
+      
+      // エラーメッセージを詳細に取得
+      let errorMessage = "メール送信に失敗しました。"
+      if (smtpError?.message) {
+        errorMessage = smtpError.message
+      } else if (smtpError?.response) {
+        errorMessage = `SMTP Error: ${smtpError.response}`
+      } else if (smtpError?.code) {
+        errorMessage = `SMTP Error Code: ${smtpError.code}`
+      }
+
+      // よくあるエラーの説明を追加
+      if (errorMessage.includes("Invalid login") || errorMessage.includes("authentication failed")) {
+        errorMessage += "\n\nSMTP認証に失敗しました。SMTP_USERとSMTP_PASSWORDを確認してください。"
+      } else if (errorMessage.includes("ECONNREFUSED") || errorMessage.includes("timeout")) {
+        errorMessage += `\n\nSMTPサーバーに接続できませんでした。SMTP_HOST (${process.env.SMTP_HOST}) と SMTP_PORT (${process.env.SMTP_PORT || 587}) を確認してください。`
+      } else if (errorMessage.includes("SMTP configuration is missing")) {
+        errorMessage += "\n\nSMTP設定が不完全です。環境変数を確認してください。"
+      }
+
       return NextResponse.json(
         {
           error: "Failed to send email",
-          detail: smtpError?.message || "メール送信に失敗しました。SMTP設定を確認してください。",
+          detail: errorMessage,
+          smtpConfig: {
+            host: process.env.SMTP_HOST ? "設定済み" : "未設定",
+            port: process.env.SMTP_PORT || "587 (デフォルト)",
+            user: process.env.SMTP_USER ? "設定済み" : "未設定",
+            from: process.env.SMTP_FROM || "未設定",
+          },
         },
         { status: 500 }
       )
