@@ -111,8 +111,29 @@ export async function POST(req: NextRequest) {
       }
 
       // よくあるエラーの説明を追加
-      if (errorMessage.includes("Invalid login") || errorMessage.includes("authentication failed")) {
-        errorMessage += "\n\nSMTP認証に失敗しました。SMTP_USERとSMTP_PASSWORDを確認してください。"
+      if (errorMessage.includes("Invalid login") || errorMessage.includes("authentication failed") || errorMessage.includes("Bad username / password")) {
+        const host = process.env.SMTP_HOST || ""
+        let helpMessage = "\n\n【SMTP認証エラーの対処法】\n"
+        
+        if (host.includes("sendgrid")) {
+          helpMessage += "SendGridを使用している場合:\n"
+          helpMessage += "- SMTP_USER: 'apikey' (固定)\n"
+          helpMessage += "- SMTP_PASSWORD: SendGridのAPIキー (SG.で始まる文字列)\n"
+          helpMessage += "- SendGridダッシュボード > Settings > API Keys でAPIキーを確認\n"
+          helpMessage += "- APIキーは 'SG.' で始まる必要があります\n"
+        } else if (host.includes("gmail") || host.includes("google")) {
+          helpMessage += "Gmailを使用している場合:\n"
+          helpMessage += "- SMTP_USER: Gmailアドレス (例: yourname@gmail.com)\n"
+          helpMessage += "- SMTP_PASSWORD: アプリパスワード (2段階認証を有効にしている場合)\n"
+          helpMessage += "- Googleアカウント > セキュリティ > 2段階認証 > アプリパスワード で生成\n"
+        } else {
+          helpMessage += "一般的な対処法:\n"
+          helpMessage += "- SMTP_USER: 正しいユーザー名/メールアドレスを確認\n"
+          helpMessage += "- SMTP_PASSWORD: パスワードに特殊文字が含まれる場合は、Vercelの環境変数で正しく設定されているか確認\n"
+          helpMessage += "- パスワードを再生成して設定し直してください\n"
+        }
+        
+        errorMessage += helpMessage
       } else if (errorMessage.includes("ECONNREFUSED") || errorMessage.includes("timeout")) {
         errorMessage += `\n\nSMTPサーバーに接続できませんでした。SMTP_HOST (${process.env.SMTP_HOST}) と SMTP_PORT (${process.env.SMTP_PORT || 587}) を確認してください。`
       } else if (errorMessage.includes("SMTP configuration is missing")) {
